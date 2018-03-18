@@ -46,9 +46,13 @@ app.post('/getcapabilities', cors(), function(req, res) {
     } else {
       try {
         var json = new WMSCapabilities().parse(xml);
-        res.json(json);
+        if (json.version && json.Service && json.Capability) {
+          res.json(json);
+        } else {
+          errorResponse(res, 'parse error: capabilities invalid or incomplete')
+        }
       } catch(err){
-        errorResponse(res, 'parse error; ' + err.message);
+        errorResponse(res, 'parse error: ' + err.message);
       }
     }
   });

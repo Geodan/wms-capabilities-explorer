@@ -8,13 +8,33 @@
     body {font-family: Arial, Helvetica, sans-serif;}
     #container {position: relative;}
     #generalcaps, #layers {max-width: 50%;}
-    #map {position: absolute; top: 0; left: 50%; width: 50%; height: 100%; border: 1px solid gray;}
+    #featureinfo {width: 45%;}
+    #featureinfo iframe {width: 100%; height: 100%;}
+    #map {position: absolute; top: 0; left: 50%; width: 50%; height: 400px; border: 1px solid gray;}
     .ol-control {border: 1px solid gray;}
+    #maploader {
+        z-index: 100;
+        display: none;
+        position: absolute;
+        margin-left: auto;
+        margin-right: auto;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
 </style>
 <script>
 
     var currentCapabilities = {};
     var map=null;
+
+    function displayMapLoader(visible) {
+        if (visible) {
+            document.getElementById('maploader').style.display = 'block';
+        } else {
+            document.getElementById('maploader').style.display = 'none';
+        }
+    }
 
     function clearMap() {
         if (map) {
@@ -110,6 +130,7 @@
     }
     function layerClick(name, projCode) {
         clearMap();
+        document.getElementById('featureinfo').innerHTML = '';
         layerInfo = getLayerInfo(name);
         loadProjection(projCode, function(projection){
             var getMapUrl = currentCapabilities.Capability.Request.GetMap.DCPType[0].HTTP.Get.OnlineResource; 
@@ -124,28 +145,41 @@
                     servertType = 'qgis';
                 }
             }
-            var extent = getLayerExtent(layerInfo.Layer, projCode);    
-            var layers = [
-                new ol.layer.Image({
-                extent: extent,
-                source: new ol.source.ImageWMS({
-                    url: getMapUrl,
-                    crossOrigin: 'anonymous',
-                    attributions: '© <a href="#">Not yet implemented</a>',
-                    params: {
+            var extent = getLayerExtent(layerInfo.Layer, projCode);
+
+            var source = 
+                new ol.source.ImageWMS({
+                url: getMapUrl,
+                crossOrigin: 'anonymous',
+                attributions: '© <a href="#">Not yet implemented</a>',
+                params: {
                     'LAYERS': name,
                     'FORMAT': 'image/png'
-                    },
-                    serverType: serverType
-                })
-                })
-            ];
+                },
+                serverType: serverType
+            });
+
+            source.on('imageloadstart', function() {
+                displayMapLoader(true);
+            });
+            source.on('imageloadend', function() {
+                displayMapLoader(false);
+            });
+            source.on('imageloaderror', function() {
+                displayMapLoader(false);
+            });
+
+            var layer = 
+                new ol.layer.Image({
+                extent: extent,
+                source: source
+            });
 
             map = new ol.Map({
                 controls: ol.control.defaults().extend([
                 new ol.control.ScaleLine()
                 ]),
-                layers: layers,
+                layers: [layer],
                 target: 'map',
                 view: new ol.View({
                 projection: projection,
@@ -154,8 +188,21 @@
                 //zoom: 7
                 })
             });
+
             map.getView().fit(extent);
             map.addControl(new ol.control.ZoomSlider());
+
+            map.on('singleclick', function(evt) {
+                document.getElementById('featureinfo').innerHTML = '';
+                var viewResolution = /** @type {number} */ (map.getView().getResolution());
+                var url = layer.getSource().getGetFeatureInfoUrl(
+                    evt.coordinate, viewResolution, projCode,
+                    {'INFO_FORMAT': 'text/html'});
+                if (url) {
+                    document.getElementById('featureinfo').innerHTML =
+                        '<iframe seamless src="' + url + '"></iframe>';
+                }
+            });
         });
     }
     // return <a href> links for every supported layer projection
@@ -167,9 +214,10 @@
         var generalCapsDiv = document.getElementById('generalcaps');
         var layersDiv = document.getElementById('layers');
         generalCapsDiv.innerHTML = layersDiv.innerHTML = "";
+        displayMapLoader(false);
         currentCapabilities = {};
         if (caps.error) {
-            output.innerHTML = "<h2>Error</h2>" + caps.error;
+            generalCapsDiv.innerHTML = "<h2>Error</h2>" + caps.error;
             return;
         }
         if (caps.version == "") {
@@ -220,7 +268,9 @@
     <div id="container">
     <div id="generalcaps"></div>
     <div id="layers"></div>
-    <div id="map" class="map"></div>
+    <div id="map" class="map"><div id="maploader"><img src="loader.gif" alt="Spinning wheel"></div>
+    </div>
+    <div id="featureinfo"></div>
     </div>
 </body>
 </html>
