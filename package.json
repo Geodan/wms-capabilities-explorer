@@ -1,0 +1,22 @@
+{
+  "name": "wmscapsviewer",
+  "version": "0.1.0",
+  "description": "parse and preview WMS Capabilities ",
+  "main": "server.js",
+  "dependencies": {
+    "cors": "^2.8.4",
+    "express": "^4.16.3",
+    "openlayers": "^4.6.4",
+    "proj4": "^2.4.4",
+    "request": "^2.85.0",
+    "wms-capabilities": "^0.3.4",
+    "xmldom": "^0.1.27"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "author": "Anne Blankert",
+  "license": "ISC"
+}
