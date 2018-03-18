@@ -58,16 +58,25 @@
         xhr.send(formData); 
     }
 
-    function getLayerInfo(name) {
-        var result = {};
-        if (currentCapabilities) {
-            if (name == currentCapabilities.Capability.Layer.Name) {
-                result.Layer = currentCapabilities.Capability.Layer;
-            } else {
-                result.Layer = currentCapabilities.Capability.Layer.Layer.reduce(function(resultLayer, layer) {if (layer.Name==name) {return layer} else {return resultLayer};}, null);
+    function findLayerCaps(name) {
+        function _findLayerCaps(name, layer) {
+            if (layer.Name == name) {
+                return layer;
             }
+            if (layer.Layer) {
+                for (var i = 0; i < layer.Layer.length; i++) {
+                    var result = _findLayerCaps(name, layer.Layer[i]);
+                    if (result) {
+                        return result;
+                    }
+                }
+            }
+            return null;
         }
-        return result;
+        if (currentCapabilities) {
+            return _findLayerCaps(name, currentCapabilities.Capability.Layer);
+        }
+        return null;
     }
 
     function loadProjection(projCode, callback) {
@@ -107,9 +116,9 @@
         });
     }
     function getLayerExtent(layer, projCode) {
-        var bbox = layer.BoundingBox.filter(box=>box.crs.toUpperCase()==projCode);
-        if (bbox.length) {
-            extent = bbox[0].extent;
+        var bbox = layer.BoundingBox.find(box=>box.crs.toUpperCase()==projCode);
+        if (bbox) {
+            extent = bbox.extent;
             if (projCode.toUpperCase() == 'EPSG:4326' || projCode.toUpperCase() == 'CRS:84') {
                 // convert lat/long to long/lat
                 var tmp = extent;
@@ -119,9 +128,9 @@
         }
         // calculate projected extent based on lat long
         var fromLonLat = ol.proj.getTransform('EPSG:4326', projCode);
-        var bbox = layer.BoundingBox.filter(box=>box.crs.toUpperCase()=='EPSG:4326');
-        if (bbox.length) {
-            extent = bbox[0].extent;
+        var bbox = layer.BoundingBox.find(box=>box.crs.toUpperCase()=='EPSG:4326');
+        if (bbox) {
+            extent = bbox.extent;
         } else {
             extent = [-90, -180, 90, 180];
         }
@@ -131,7 +140,7 @@
     function layerClick(name, projCode) {
         clearMap();
         document.getElementById('featureinfo').innerHTML = '';
-        layerInfo = getLayerInfo(name);
+        var layerCaps = findLayerCaps(name);
         loadProjection(projCode, function(projection){
             var getMapUrl = currentCapabilities.Capability.Request.GetMap.DCPType[0].HTTP.Get.OnlineResource; 
             var serverType = 'qgis';
@@ -145,7 +154,7 @@
                     servertType = 'qgis';
                 }
             }
-            var extent = getLayerExtent(layerInfo.Layer, projCode);
+            var extent = getLayerExtent(layerCaps, projCode);
 
             var source = 
                 new ol.source.ImageWMS({
@@ -207,7 +216,31 @@
     }
     // return <a href> links for every supported layer projection
     function layerClickHTML(layer) {
-        return Array.from(new Set(layer.CRS)).map(crs=>'<a href="javascript:layerClick(\''+layer.Name+'\',\''+crs+'\')">' + crs + '</a>').join(" | ")
+        var uniqueCRS = Array.from(new Set(layer.CRS));
+        if (layer.Name && layer.Name != "") {
+            return uniqueCRS.map(crs=>'<a href="javascript:layerClick(\''+layer.Name+'\',\''+crs+'\')">' + crs + '</a>').join(" | ")
+        }
+        return uniqueCRS.join(" | ");
+    }
+    function layerHtml(layer, stringArray, depth) {
+        var html = '';
+        if (depth == 0) {
+            html = 'Root';
+        } else {
+            for (var i = 0; i < depth; i++) {
+                html += 'Sub';
+            }
+        }
+        html += ': ';
+        html += (layer.Name && layer.Name != "" ? layer.Name : 'hidden');
+        html += ", title: " + layer.Title + ": " + layerClickHTML(layer);
+        stringArray.push(html);
+        if (layer.Layer) {
+            for (var j = 0; j < layer.Layer.length; j++) {
+                layerHtml(layer.Layer[j], stringArray, depth + 1);
+            }
+        }
+        return stringArray;
     }
     function outputCapabilities(caps)
     {
@@ -236,8 +269,9 @@
         html.push({"access constraints": caps.Service.AccessConstraints});
         generalCapsDiv.innerHTML = "<table>" + html.map(obj=>"<tr><td><b>"+Object.keys(obj)[0]+"</b></td><td>" + obj[Object.keys(obj)[0]] + "</td></tr>").join('\n') + "</table>"
         
-        layersDiv.innerHTML += 'Root: ' + caps.Capability.Layer.Name + ", title: " + caps.Capability.Layer.Title + ": " + layerClickHTML(caps.Capability.Layer)+ "<br>" +
-          caps.Capability.Layer.Layer.map(layer=>' Sub: ' + layer.Name + ", title: " + layer.Title + ": " + layerClickHTML(layer)).join("<br>");
+        /* subsublayers example: http://geoserveis.icc.cat/icc_bseccen/wms/service?REQUEST=GetCapabilities&VERSION=1.3.0&service=wms */
+        layersDiv.innerHTML = "Layers<br>" + layerHtml(caps.Capability.Layer, [], 0).join('<br>');
+        
         currentCapabilities = caps;
     }
     function init()
