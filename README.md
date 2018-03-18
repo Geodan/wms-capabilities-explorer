@@ -2,7 +2,7 @@
 Explore WMS getCapabilities, preview layers, extent, scale, attribution, access constraints, etc.
 
 ## work in progress
-Initial commits, todos: minscale/maxscale/resolution, extent bbox, automatic url fix, etc.
+Initial commits, todos: minscale/maxscale/resolution, extent bbox, automatic url fix, getlegendgraphic, getfeatureinfo etc.
 
 ## Installation
     git clone https://github.com/this_repository

@@ -49,64 +49,124 @@
         }
         return result;
     }
-    function layerClick(name) {
+
+    function loadProjection(projCode, callback) {
+        var projection = ol.proj.get(projCode);
+        if (projection) {
+            callback(projection);
+            return;
+        }
+        fetch('https://epsg.io/?format=json&q=' + projCode.split(':')[1]).then(function(response) {
+            return response.json();
+        }).then(function(json) {
+            var results = json['results'];
+            if (results && results.length > 0) {
+                for (var i = 0, ii = results.length; i < ii; i++) {
+                    var result = results[i];
+                    if (result) {
+                    var code = result['code'], name = result['name'],
+                        proj4def = result['proj4'], bbox = result['bbox'];
+                        if (code && code.length > 0 && proj4def && proj4def.length > 0 &&
+                                bbox && bbox.length == 4) {
+                            var newProjCode = 'EPSG:' + code;
+                            proj4.defs(newProjCode, proj4def);
+                            var newProj = ol.proj.get(newProjCode);
+                            var fromLonLat = ol.proj.getTransform('EPSG:4326', newProj);
+
+                            // very approximate calculation of projection extent
+                            var extent = ol.extent.applyTransform([bbox[1], bbox[2], bbox[3], bbox[0]], fromLonLat);
+                            newProj.setExtent(extent);
+                            callback(newProj);
+                            return;
+                        }
+                    }
+                }
+            }
+            // no projection found, default to epsg:3857
+            callback(ol.proj.get('EPSG:3857'));
+        });
+    }
+    function getLayerExtent(layer, projCode) {
+        var bbox = layer.BoundingBox.filter(box=>box.crs.toUpperCase()==projCode);
+        if (bbox.length) {
+            extent = bbox[0].extent;
+            if (projCode.toUpperCase() == 'EPSG:4326' || projCode.toUpperCase() == 'CRS:84') {
+                // convert lat/long to long/lat
+                var tmp = extent;
+                extent = [tmp[1], tmp[0], tmp[3], tmp[2]];
+            }
+            return extent;
+        }
+        // calculate projected extent based on lat long
+        var fromLonLat = ol.proj.getTransform('EPSG:4326', projCode);
+        var bbox = layer.BoundingBox.filter(box=>box.crs.toUpperCase()=='EPSG:4326');
+        if (bbox.length) {
+            extent = bbox[0].extent;
+        } else {
+            extent = [-90, -180, 90, 180];
+        }
+        extent = ol.extent.applyTransform([extent[1], extent[2], extent[3], extent[0]], fromLonLat);
+        return extent;
+    }
+    function layerClick(name, projCode) {
         clearMap();
         layerInfo = getLayerInfo(name);
-        var projCode = 'EPSG:3857';
-        var projection = new ol.proj.Projection({
-            code: projCode
-        });
-        var getMapUrl = currentCapabilities.Capability.Request.GetMap.DCPType[0].HTTP.Get.OnlineResource; 
-        var serverType = 'qgis';
-        if (name.indexOf(":") > -1) {
-            serverType = 'geoserver';
-        }
-        if (getMapUrl.indexOf("map=") > -1) {
-            if (getMapUrl.indexOf(".map") > -1) {
-                serverType = 'mapserver';
-            } else if (getMapUrl.indexOf(".qgs") > -1) {
-                servertType = 'qgis';
+        loadProjection(projCode, function(projection){
+            var getMapUrl = currentCapabilities.Capability.Request.GetMap.DCPType[0].HTTP.Get.OnlineResource; 
+            var serverType = 'qgis';
+            if (name.indexOf(":") > -1) {
+                serverType = 'geoserver';
             }
-        }
-        var extent = layerInfo.Layer.BoundingBox.reduce(function(result, box){return box.crs.toUpperCase()==projCode?box.extent:result}, null)
-        var layers = [
-            new ol.layer.Image({
-            extent: extent,
-            source: new ol.source.ImageWMS({
-                url: getMapUrl,
-                crossOrigin: 'anonymous',
-                attributions: '© <a href="http://www.geo.admin.ch/internet/geoportal/' +
-                    'en/home.html">Pixelmap 1:1000000 / geo.admin.ch</a>',
-                params: {
-                'LAYERS': name,
-                'FORMAT': 'image/png'
-                },
-                serverType: serverType
-            })
-            })
-        ];
+            if (getMapUrl.indexOf("map=") > -1) {
+                if (getMapUrl.indexOf(".map") > -1) {
+                    serverType = 'mapserver';
+                } else if (getMapUrl.indexOf(".qgs") > -1) {
+                    servertType = 'qgis';
+                }
+            }
+            var extent = getLayerExtent(layerInfo.Layer, projCode);    
+            var layers = [
+                new ol.layer.Image({
+                extent: extent,
+                source: new ol.source.ImageWMS({
+                    url: getMapUrl,
+                    crossOrigin: 'anonymous',
+                    attributions: '© <a href="#">Not yet implemented</a>',
+                    params: {
+                    'LAYERS': name,
+                    'FORMAT': 'image/png'
+                    },
+                    serverType: serverType
+                })
+                })
+            ];
 
-        map = new ol.Map({
-            controls: ol.control.defaults().extend([
-            new ol.control.ScaleLine()
-            ]),
-            layers: layers,
-            target: 'map',
-            view: new ol.View({
-            projection: projection,
-            center: [(extent[0]+extent[2])/2, (extent[1]+extent[3])/2], //ol.proj.fromLonLat([8.23, 46.86], projection),
-            extent: extent//,
-            //zoom: 7
-            })
+            map = new ol.Map({
+                controls: ol.control.defaults().extend([
+                new ol.control.ScaleLine()
+                ]),
+                layers: layers,
+                target: 'map',
+                view: new ol.View({
+                projection: projection,
+                center: [(extent[0]+extent[2])/2, (extent[1]+extent[3])/2], //ol.proj.fromLonLat([8.23, 46.86], projection),
+                extent: extent//,
+                //zoom: 7
+                })
+            });
+            map.getView().fit(extent);
+            map.addControl(new ol.control.ZoomSlider());
         });
-        map.getView().fit(extent);
-        map.addControl(new ol.control.ZoomSlider());
+    }
+    // return <a href> links for every supported layer projection
+    function layerClickHTML(layer) {
+        return Array.from(new Set(layer.CRS)).map(crs=>'<a href="javascript:layerClick(\''+layer.Name+'\',\''+crs+'\')">' + crs + '</a>').join(" | ")
     }
     function outputCapabilities(caps)
     {
-        var generalCaps = document.getElementById('generalcaps');
-        var layers = document.getElementById('layers');
-        generalCaps.innerHTML = layers.innerHTML = "";
+        var generalCapsDiv = document.getElementById('generalcaps');
+        var layersDiv = document.getElementById('layers');
+        generalCapsDiv.innerHTML = layersDiv.innerHTML = "";
         currentCapabilities = {};
         if (caps.error) {
             output.innerHTML = "<h2>Error</h2>" + caps.error;
@@ -126,11 +186,10 @@
         html.push({"org": caps.Service.ContactInformation.ContactPersonPrimary.ContactOrganization});
         html.push({"fees": caps.Service.Fees});
         html.push({"access constraints": caps.Service.AccessConstraints});
-        generalCaps.innerHTML = "<table>" + html.map(obj=>"<tr><td><b>"+Object.keys(obj)[0]+"</b></td><td>" + obj[Object.keys(obj)[0]] + "</td></tr>").join('\n') + "</table>"
-        html = [];
-        html.push({"Root layer": caps.Capability.Layer.Name})
-        generalCaps.innerHTML += 'Layers<br>Root: <a href="#" onclick="layerClick(\'' + caps.Capability.Layer.Name + '\');return false">' + caps.Capability.Layer.Name + "</a>, title: " + caps.Capability.Layer.Title + "<br>" +
-          caps.Capability.Layer.Layer.map(layer=>' Sub: <a href="#" onclick="layerClick(\'' + layer.Name + '\');return false">' + layer.Name + "</a> title: " + layer.Title).join("<br>");
+        generalCapsDiv.innerHTML = "<table>" + html.map(obj=>"<tr><td><b>"+Object.keys(obj)[0]+"</b></td><td>" + obj[Object.keys(obj)[0]] + "</td></tr>").join('\n') + "</table>"
+        
+        layersDiv.innerHTML += 'Root: ' + caps.Capability.Layer.Name + ", title: " + caps.Capability.Layer.Title + ": " + layerClickHTML(caps.Capability.Layer)+ "<br>" +
+          caps.Capability.Layer.Layer.map(layer=>' Sub: ' + layer.Name + ", title: " + layer.Title + ": " + layerClickHTML(layer)).join("<br>");
         currentCapabilities = caps;
     }
     function init()
