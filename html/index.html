@@ -44,21 +44,17 @@
         }
     }
 
-    // to be replaced by fetch() ?
-    function getCapablitiesJson(url, callback){
-        var xhr = new XMLHttpRequest();
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState == XMLHttpRequest.DONE) {
-                if (callback) {
-                    callback(null, xhr.responseText);
-                }
+    function getCapabilitiesJson(url) {
+        return fetch('/getcapabilities',{
+            method: 'POST',
+            body: "url=" + encodeURIComponent(url),
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
             }
-        }
-        var formData = 'url=' + encodeURIComponent(url);
-        xhr.open('POST', '/getcapabilities');
-        xhr.setRequestHeader('Content-Type','application/x-www-form-urlencoded; charset=UTF-8');
-        xhr.send(formData); 
-    }
+        }).then(function(response){
+            return response.json();
+        })
+    };
 
     function getLayerCaps(name) {
         function _getLayerCaps(name, layer) {
@@ -304,10 +300,12 @@
         // update input url
         document.getElementById('inputurl').value = url;
 
-        getCapablitiesJson(url, function(err, jsonstring){
-            var caps = JSON.parse(jsonstring);
+        getCapabilitiesJson(url)
+        .then(function(caps){
             outputCapabilities(caps);
-            console.log(jsonstring);
+        })
+        .catch(function(err){
+            outputCapabilities({"error": err});
         })
     }
     function init()
