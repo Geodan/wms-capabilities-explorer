@@ -114,28 +114,21 @@
         });
     }
     function getLayerExtent(layer, projCode) {
+        var geoExtent = layer.EX_GeographicBoundingBox ? layer.EX_GeographicBoundingBox : layer.LatLonBoundingBox;
+        if (!geoExtent) {
+            geoExtent = [-90, -180, 90, 180];
+        }
+        if (projCode.toUpperCase() == 'EPSG:4326' || projCode.toUpperCase() == 'CRS:84') {
+            // fix for reverse axis order madness, https://github.com/deegree/deegree3/wiki/Axis-order-handling
+            return geoExtent;
+        }
         var bbox = layer.BoundingBox.find(box=>box.crs.toUpperCase()==projCode);
         if (bbox) {
-            extent = bbox.extent;
-            if (projCode.toUpperCase() == 'EPSG:4326' || projCode.toUpperCase() == 'CRS:84') {
-                if (currentCapabilities.version != '1.1.1') {
-                    // convert lat/long to long/lat
-                    var tmp = extent;
-                    extent = [tmp[1], tmp[0], tmp[3], tmp[2]];
-                }
-            }
-            return extent;
+            return bbox.extent;
         }
-        // calculate projected extent based on lat long
         var fromLonLat = ol.proj.getTransform('EPSG:4326', projCode);
-        var bbox = layer.BoundingBox.find(box=>box.crs.toUpperCase()=='EPSG:4326');
-        if (bbox) {
-            extent = bbox.extent;
-        } else {
-            extent = [-90, -180, 90, 180];
-        }
-        extent = ol.extent.applyTransform([extent[1], extent[2], extent[3], extent[0]], fromLonLat);
-        return extent;
+        var srsExtent = ol.extent.applyTransform([geoExtent[0], geoExtent[1], geoExtent[2], geoExtent[3]], fromLonLat);
+        return srsExtent;
     }
     function layerClick(name, projCode) {
         clearMap();
@@ -215,26 +208,29 @@
         });
     }
     // return <a href> links for every supported layer projection
-    function layerClickHTML(layer) {
-        var crs = layer.CRS ? layer.CRS : layer.SRS;
+    function layerClickHTML(layer, crs) {
         var uniqueCRS = Array.from(new Set(crs));
         if (layer.Name && layer.Name != "") {
             return uniqueCRS.map(crs=>'<a href="javascript:layerClick(\''+layer.Name+'\',\''+crs+'\')">' + crs + '</a>').join(" | ")
         }
         return uniqueCRS.join(" | ");
     }
-    function layerHtml(layer, stringArray, depth) {
+    function layerHtml(layer, stringArray, depth, parentCrs) {
+        var crs = layer.CRS ? layer.CRS : layer.SRS;
+        if (!crs) {
+            crs = parentCrs;
+        }
         var html = '';
         for (var i = 0; i < depth; i++) {
             html += '-';
         }
         html += '&gt; ';
         html += (layer.Name && layer.Name != "" ? layer.Name : 'hidden');
-        html += ", title: " + layer.Title + ": " + layerClickHTML(layer);
+        html += ", title: " + layer.Title + ": " + layerClickHTML(layer, crs);
         stringArray.push(html);
         if (layer.Layer) {
             for (var j = 0; j < layer.Layer.length; j++) {
-                layerHtml(layer.Layer[j], stringArray, depth + 1);
+                layerHtml(layer.Layer[j], stringArray, depth + 1, crs);
             }
         }
         return stringArray;
