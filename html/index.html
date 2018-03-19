@@ -211,22 +211,22 @@
     function layerClickHTML(layer, crs) {
         var uniqueCRS = Array.from(new Set(crs));
         if (layer.Name && layer.Name != "") {
-            return uniqueCRS.map(crs=>'<a href="javascript:layerClick(\''+layer.Name+'\',\''+crs+'\')">' + crs + '</a>').join(" | ")
+            return uniqueCRS.map(crs=>'<a href="javascript:layerClick(\''+layer.Name+'\',\''+crs+'\')">' + crs + '</a>').join("<br>")
         }
-        return uniqueCRS.join(" | ");
+        return uniqueCRS.join("<br>");
     }
     function layerHtml(layer, stringArray, depth, parentCrs) {
         var crs = layer.CRS ? layer.CRS : layer.SRS;
         if (!crs) {
             crs = parentCrs;
         }
-        var html = '';
+        var html = '<td>';
         for (var i = 0; i < depth; i++) {
-            html += '-';
+            html += '- ';
         }
-        html += '&gt; ';
-        html += (layer.Name && layer.Name != "" ? layer.Name : 'hidden');
-        html += ", title: " + layer.Title + ": " + layerClickHTML(layer, crs);
+        html += '&gt;</td>';
+        html += '<td>'+(layer.Name && layer.Name != "" ? layer.Name : 'hidden') + '</td>';
+        html += "<td>" + layer.Title + "</td><td>" + layerClickHTML(layer, crs)+'</td>';
         stringArray.push(html);
         if (layer.Layer) {
             for (var j = 0; j < layer.Layer.length; j++) {
@@ -267,7 +267,7 @@
         generalCapsDiv.innerHTML = "<table>" + html.map(obj=>"<tr><td><b>"+Object.keys(obj)[0]+"</b></td><td>" + obj[Object.keys(obj)[0]] + "</td></tr>").join('\n') + "</table>"
         
         /* subsublayers example: http://geoserveis.icc.cat/icc_bseccen/wms/service?REQUEST=GetCapabilities&VERSION=1.3.0&service=wms */
-        layersDiv.innerHTML = "Layers<br>" + layerHtml(caps.Capability.Layer, [], 0).join('<br>');
+        layersDiv.innerHTML = "Layers<br><table><tr><th></th><th>name</th><th>title</th><th>srs</th><tr>" + layerHtml(caps.Capability.Layer, [], 0).join('</tr><tr>') + '</tr></table>'
         
         currentCapabilities = caps;
     }
@@ -295,6 +295,10 @@
 
         // update input url
         document.getElementById('inputurl').value = url;
+        // store url in localstorage
+        if (window.localStorage) {
+            window.localStorage.wmsurl = url;
+        }
 
         getCapabilitiesJson(url)
         .then(function(caps){
@@ -306,6 +310,9 @@
     }
     function init()
     {
+        if (window.localStorage && window.localStorage.wmsurl) {
+            document.getElementById('inputurl').value = window.localStorage.wmsurl;
+        }
         document.getElementById('inputurl').addEventListener('keyup', function(evt){
             if (evt.key == 'Enter'){
                 loadCapabilities();
@@ -319,7 +326,7 @@
 </head>
 <body onload="init()">
     <label for="inputurl">WMS baseurl</label><br>   
-    <input id="inputurl" type="text" placeholder="http://server/wmsservice?param1=value1&param2=value2" size="100" value="http://localhost:8080/cgi-bin/qgis/qgis_mapserv.fcgi?map=cbsadministratief.qgs&service=WMS&request=getcapabilities&version=1.3.0"></input>
+    <input id="inputurl" type="text" placeholder="http://server/wmsservice?param1=value1&param2=value2" size="100" value=""></input>
     <input id="parsebutton" type="button" value="parse">
     <select id="wmsversion">
         <option value="1.3.0" selected="selected">1.3.0</option>
