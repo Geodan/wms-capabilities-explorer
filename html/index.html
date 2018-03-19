@@ -24,7 +24,7 @@
     }
 </style>
 <script>
-
+    // globals
     var currentCapabilities = {};
     var map=null;
 
@@ -43,6 +43,7 @@
         }
     }
 
+    // to be replaced by fetch() ?
     function getCapablitiesJson(url, callback){
         var xhr = new XMLHttpRequest();
         xhr.onreadystatechange = function() {
@@ -58,14 +59,14 @@
         xhr.send(formData); 
     }
 
-    function findLayerCaps(name) {
-        function _findLayerCaps(name, layer) {
+    function getLayerCaps(name) {
+        function _getLayerCaps(name, layer) {
             if (layer.Name == name) {
                 return layer;
             }
             if (layer.Layer) {
                 for (var i = 0; i < layer.Layer.length; i++) {
-                    var result = _findLayerCaps(name, layer.Layer[i]);
+                    var result = _getLayerCaps(name, layer.Layer[i]);
                     if (result) {
                         return result;
                     }
@@ -74,7 +75,7 @@
             return null;
         }
         if (currentCapabilities) {
-            return _findLayerCaps(name, currentCapabilities.Capability.Layer);
+            return _getLayerCaps(name, currentCapabilities.Capability.Layer);
         }
         return null;
     }
@@ -120,9 +121,11 @@
         if (bbox) {
             extent = bbox.extent;
             if (projCode.toUpperCase() == 'EPSG:4326' || projCode.toUpperCase() == 'CRS:84') {
-                // convert lat/long to long/lat
-                var tmp = extent;
-                extent = [tmp[1], tmp[0], tmp[3], tmp[2]];
+                if (currentCapabilities.version != '1.1.1') {
+                    // convert lat/long to long/lat
+                    var tmp = extent;
+                    extent = [tmp[1], tmp[0], tmp[3], tmp[2]];
+                }
             }
             return extent;
         }
@@ -140,7 +143,7 @@
     function layerClick(name, projCode) {
         clearMap();
         document.getElementById('featureinfo').innerHTML = '';
-        var layerCaps = findLayerCaps(name);
+        var layerCaps = getLayerCaps(name);
         loadProjection(projCode, function(projection){
             var getMapUrl = currentCapabilities.Capability.Request.GetMap.DCPType[0].HTTP.Get.OnlineResource; 
             var serverType = 'qgis';
@@ -216,7 +219,8 @@
     }
     // return <a href> links for every supported layer projection
     function layerClickHTML(layer) {
-        var uniqueCRS = Array.from(new Set(layer.CRS));
+        var crs = layer.CRS ? layer.CRS : layer.SRS;
+        var uniqueCRS = Array.from(new Set(crs));
         if (layer.Name && layer.Name != "") {
             return uniqueCRS.map(crs=>'<a href="javascript:layerClick(\''+layer.Name+'\',\''+crs+'\')">' + crs + '</a>').join(" | ")
         }
@@ -224,14 +228,10 @@
     }
     function layerHtml(layer, stringArray, depth) {
         var html = '';
-        if (depth == 0) {
-            html = 'Root';
-        } else {
-            for (var i = 0; i < depth; i++) {
-                html += 'Sub';
-            }
+        for (var i = 0; i < depth; i++) {
+            html += '-';
         }
-        html += ': ';
+        html += '&gt; ';
         html += (layer.Name && layer.Name != "" ? layer.Name : 'hidden');
         html += ", title: " + layer.Title + ": " + layerClickHTML(layer);
         stringArray.push(html);
@@ -274,16 +274,45 @@
         
         currentCapabilities = caps;
     }
+    function loadCapabilities()
+    {
+        clearMap();
+        url = document.getElementById('inputurl').value;
+        var urlParts = url.split('?');
+        if (urlParts.length > 1) {
+            params = urlParts[1].split('&');
+        } else {
+            params = [];
+        }
+
+        // remove rogue or dirty parameters
+        params = params.filter(param=>param.split('=')[0].toLowerCase() != 'service');
+        params = params.filter(param=>param.split('=')[0].toLowerCase() != 'request');
+        params = params.filter(param=>param.split('=')[0].toLowerCase() != 'version');
+        // add getcapabilities parameters
+        var e = document.getElementById("wmsversion");
+        params.push('version='+e.options[e.selectedIndex].value);
+        params.push('service=WMS');
+        params.push('request=getcapabilities');
+        url = urlParts[0] + '?' + params.join('&');
+
+        // update input url
+        document.getElementById('inputurl').value = url;
+
+        getCapablitiesJson(url, function(err, jsonstring){
+            outputCapabilities(JSON.parse(jsonstring));
+            console.log(jsonstring);
+        })
+    }
     function init()
     {
-        var parseButton = document.getElementById('parsebutton');
-        parseButton.addEventListener('click', function(target, event){
-            clearMap();
-            url = document.getElementById('inputurl').value;
-            getCapablitiesJson(url, function(err, jsonstring){
-                outputCapabilities(JSON.parse(jsonstring));
-                console.log(jsonstring);
-            })
+        document.getElementById('inputurl').addEventListener('keyup', function(evt){
+            if (evt.key == 'Enter'){
+                loadCapabilities();
+            }
+        })
+        document.getElementById('parsebutton').addEventListener('click', function(target, event){
+            loadCapabilities();
         })
     }
 </script>
@@ -292,8 +321,8 @@
     <label for="inputurl">WMS baseurl</label><br>   
     <input id="inputurl" type="text" placeholder="http://server/wmsservice?param1=value1&param2=value2" size="100" value="http://localhost:8080/cgi-bin/qgis/qgis_mapserv.fcgi?map=cbsadministratief.qgs&service=WMS&request=getcapabilities&version=1.3.0"></input>
     <input id="parsebutton" type="button" value="parse">
-    <select name="wmsversion">
-        <option value="1.3.0">1.3.0</option>
+    <select id="wmsversion">
+        <option value="1.3.0" selected="selected">1.3.0</option>
         <option value="1.1.1">1.1.1</option>
         <option value="1.1.0">1.1.0</option>
         <option value="1.0.0">1.0.0</option>
