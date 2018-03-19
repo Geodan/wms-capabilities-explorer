@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <title>WMS Explorer</title>
     <link rel="stylesheet" href="node_modules/openlayers/dist/ol.css" type="text/css">
     <script src="node_modules/openlayers/dist/ol.js"></script>
     <script src="node_modules/proj4/dist/proj4.js"></script>
@@ -261,10 +262,14 @@
         html.push({"version": caps.version});
         html.push({"title": caps.Service.Title});
         html.push({"abstract": caps.Service.Abstract});
-        html.push({"keywords": caps.Service.KeywordList.join(",")});
+        if (caps.Service.KeywordList) {
+            html.push({"keywords": caps.Service.KeywordList.join(",")});
+        }
         html.push({"service url": caps.Service.OnlineResource});
-        html.push({"contact": caps.Service.ContactInformation.ContactPersonPrimary.ContactPerson});
-        html.push({"org": caps.Service.ContactInformation.ContactPersonPrimary.ContactOrganization});
+        if (caps.Service.ContactInformation && caps.Service.ContactInformation.ContactPersonPrimary) {
+            html.push({"contact": caps.Service.ContactInformation.ContactPersonPrimary.ContactPerson});
+            html.push({"org": caps.Service.ContactInformation.ContactPersonPrimary.ContactOrganization});
+        }
         html.push({"fees": caps.Service.Fees});
         html.push({"access constraints": caps.Service.AccessConstraints});
         generalCapsDiv.innerHTML = "<table>" + html.map(obj=>"<tr><td><b>"+Object.keys(obj)[0]+"</b></td><td>" + obj[Object.keys(obj)[0]] + "</td></tr>").join('\n') + "</table>"
@@ -300,7 +305,8 @@
         document.getElementById('inputurl').value = url;
 
         getCapablitiesJson(url, function(err, jsonstring){
-            outputCapabilities(JSON.parse(jsonstring));
+            var caps = JSON.parse(jsonstring);
+            outputCapabilities(caps);
             console.log(jsonstring);
         })
     }
