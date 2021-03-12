@@ -10,7 +10,7 @@
     "proj4": "^2.4.4",
     "request": "^2.85.0",
     "wms-capabilities": "^0.3.4",
-    "xmldom": "^0.1.27"
+    "xmldom": "^0.5.0"
   },
   "devDependencies": {},
   "scripts": {
